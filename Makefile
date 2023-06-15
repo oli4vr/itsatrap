@@ -7,3 +7,6 @@ all:
 	gcc itsatrap.c -o itsatrap -lpthread $(NET_SNMP_VARS) -O3 sha512.o encrypt.o entropy.o inifind.o
 clean:
 	rm *.o itsatrap
+install:
+	mkdir -p ~/bin 2>/dev/null
+	cp itsatrap ~/bin/
