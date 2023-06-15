@@ -1,5 +1,2 @@
 #!/bin/bash
-rc=55
-echo "$rc Testmsg"
-echo "33 Second Line"
-echo "0 All is well"
+df -m | grep '^/' | tr -d '%' | awk '{print $5,$6}' | grep -v '^$'
