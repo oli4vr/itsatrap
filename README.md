@@ -1,2 +1,3 @@
 # itsatrap
-snmp trap agent
+Command/Script to snmp trap agent with encrypted manifest files.
+
