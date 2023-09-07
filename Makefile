@@ -4,9 +4,17 @@ all:
 	gcc -c sha512.c -o sha512.o -O3
 	gcc -c encrypt.c -o encrypt.o -O3
 	gcc -c entropy.c -o entropy.o -O3
-	gcc itsatrap.c -o itsatrap -lpthread $(NET_SNMP_VARS) -O3 sha512.o encrypt.o entropy.o inifind.o
-clean:
-	rm *.o itsatrap
+	gcc -c tcpd.c -o tcpd.o -O3 -lpthread
+	gcc itsatrap.c -o itsatrap -lpthread $(NET_SNMP_VARS) -O3 sha512.o encrypt.o entropy.o inifind.o tcpd.o
 install:
 	mkdir -p ~/bin 2>/dev/null
 	cp itsatrap ~/bin/
+bundle:
+	rm -rf ~/.itsatrap
+	./itsatrap -b main.csv
+	./genpkg.sh
+clean:
+	rm *.o itsatrap pkg.tgz
+uninstall:
+	rm -rf ~/.itsatrap
+	rm ~/bin/itsatrap

@@ -1,6 +1,9 @@
 #include "itsatrap.h"
 #include "entropy.h"
 #include "inifind.h"
+#include "tcpd.h"
+
+#define TCP_BUF_SIZE 65536
 
 unsigned char basepath[256]={0};
 
@@ -100,15 +103,24 @@ cmdtrap * manifest_nexttrap(unsigned char ** inbuff, unsigned char * tpath, unsi
     c++;*inbuff=c;
 
     rctrap=malloc(sizeof(cmdtrap));
-    memcpy(rctrap->oidstr,tmp,256);
-    rctrap->oidstr[255]=0;
-    rctrap->oidnr=str2oid(tmp,rctrap->objectid);
+    if (tmp[0]=='-') {
+        rctrap->snmpon=0;
+        rctrap->oidnr=0;
+        rctrap->oidstr[0]=0;
+    }
+    else {
+        rctrap->snmpon=1;
+        memcpy(rctrap->oidstr,tmp,256);
+        rctrap->oidstr[255]=0;
+        rctrap->oidnr=str2oid(tmp,rctrap->objectid);
+    }
     memcpy(rctrap->vaultfile,vaultfile,256);
     memcpy(rctrap->vault,vault,256);
     memcpy(rctrap->keystring,keystring,256);
     memcpy(rctrap->community,community,32);
     memcpy(rctrap->commands,commands,8127);
     rctrap->seconds=seconds;
+    rctrap->resultsnum=0;
     return rctrap;
 }
 
@@ -175,10 +187,16 @@ int generate_manifesto(unsigned char * fname, unsigned char * tpath) {
     remove(dvault);
     rc=entropy_append(csvfile,"manifest.csv",securestr,dvault,16);
 
+    //Remove vault files
     for(n=0;n<trapc;n++) {
         cp=traps[n];
         remove(cp->vaultfile);
-        //fprintf(stderr,"%s\n",cp->vaultfile);
+    }
+
+    //Appending entries to vault files
+    for(n=0;n<trapc;n++) {
+        cp=traps[n];
+        //fprintf(stderr,"Appending %s %s \n",cp->vaultfile,cp->keystring);
         if (cp!=NULL)
             rc=entropy_append(cp->commands,cp->keystring,securestr,cp->vaultfile,2); 
     }
@@ -201,8 +219,8 @@ int load_manifesto(unsigned char * spath) {
     offset=entropy_search(buffer,"manifest.csv",securestr,dvault,16);
     if (offset<0) return -1;
 
-    //fprintf(stderr,"%s\n",buffer);
     buffer[MESSAGE_SIZE-1]=0;
+    //fprintf(stderr,"%s\n",buffer);
     
     traps[trapc]=manifest_nexttrap(&bp,spath,1);
     cp=traps[trapc];
@@ -272,7 +290,7 @@ int exec_trap(cmdtrap * c) {
     if (pipe==NULL) return -1;
     rc=fread(buffer,1,MESSAGE_SIZE,pipe);
     pclose(pipe);
-
+    c->resultsnum=0;
     while (neof) {
         rcstr=sp;
         while (*sp!=' ') {if (*sp==0) return 0; sp++;}
@@ -285,19 +303,24 @@ int exec_trap(cmdtrap * c) {
             rc=send_trap(c,rcstr,outstr,cfg.ipstr1);
         if (cfg.ipstr2[0]!=0)
             rc=send_trap(c,rcstr,outstr,cfg.ipstr2);
+        strncpy(c->results[c->resultsnum].result_string,outstr,256);
+        strncpy(c->results[c->resultsnum].result_value,rcstr,32);
+        c->resultsnum++;
     }
-
     return (rc);
 }
 
 int ini_loadcfg(cfgtrap * c,unsigned char * inifile) {
     int rc;
     unsigned char tmp[256];
-    rc=findini(inifile,"General","ServerIP1",c->ipstr1);
+    rc=findini(inifile,"General","SNMPtrapIP1",c->ipstr1);
     if (rc<1) c->ipstr1[0]=0;
-    rc=findini(inifile,"General","ServerIP2",c->ipstr2);
+    rc=findini(inifile,"General","SNMPtrapIP2",c->ipstr2);
     if (rc<1) c->ipstr2[0]=0;
-
+    rc=findini(inifile,"General","RestPort",tmp);
+    if (rc<1) {tmp[0]='0';tmp[1]=0;}
+    c->restport=atoi(tmp);
+    if (c->restport==0) c->restport=40480;
 }
 
 void * itsathread(void * data) {
@@ -310,12 +333,79 @@ void * itsathread(void * data) {
     }
 }
 
+int buildjson(unsigned char * jsonout) {
+    int n,m,max,jsonpos=0,len;
+    unsigned char * jsonpnt=jsonout;
+    cmdtrap * c;
+    // HTTP Header :
+    strncpy(jsonpnt,"HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\"itsatrap\":{\"results\":[",128);
+    jsonpos+=strnlen(jsonpnt,256);
+    jsonpnt+=jsonpos;
+    for(n=0;n<trapc;n++) {
+     c=traps[n];
+     //fprintf(stderr,"num results = %d\n",c->resultsnum);
+     max=(c->resultsnum)-1;
+     if (n>0 && c->resultsnum>0) {
+      *jsonpnt=',';
+       jsonpnt++;
+       jsonpos++;
+     }
+     for(m=0;m<(c->resultsnum);m++) {
+        sprintf(jsonpnt,"{\"%s\":{\"%s\":{\"%s\":\"%s\"}}}",c->vault,c->keystring,c->results[m].result_string,c->results[m].result_value);
+        len=strnlen(jsonpnt,256);
+        jsonpos+=len;
+        //fprintf(stderr,"DEBUG %d %s\n",len,jsonpnt);
+        jsonpnt+=len;
+        if (m!=max) {
+            *jsonpnt=',';
+            jsonpnt++;
+            jsonpos++;
+        }
+     }
+    }
+    *jsonpnt=']';
+    jsonpnt++;
+    *jsonpnt='}';
+    jsonpnt++;
+    *jsonpnt='}';
+    jsonpnt++;
+    jsonpos+=3;
+    *jsonpnt=0;
+    return jsonpos;
+}
+
+void * http_handler(void *p) {
+ struct timeval tv;
+ unsigned char out[4]={0};
+ unsigned char buf[TCP_BUF_SIZE]={0};
+ unsigned char jsonreply[65535];
+ int jsonlen;
+ int rc,l;
+ tv.tv_sec=5;
+ tv.tv_usec=0;
+
+ tcpcc *m=(tcpcc*)p;
+
+ if (p==NULL) return NULL;
+
+ pthread_detach(pthread_self());
+ l=recv(m->sock, buf, TCP_BUF_SIZE, 0);
+ //fprintf(stderr,"%s\n",buf);
+ jsonlen=buildjson(jsonreply);
+ //fprintf(stderr,"%s\n",jsonreply);
+ send(m->sock, jsonreply, jsonlen, 0);
+ close(m->sock);
+ free(m);
+ m=NULL;
+}
 
 int main(int argc, char ** argv) {
-
     int rc;
     int n;
     pthread_t *thr;
+    pthread_t thr_http;
+    tcpd tcp_http;
+
     FILE * fp;
     unsigned char cfgpath[256]={0};
 
@@ -337,7 +427,8 @@ int main(int argc, char ** argv) {
     } else {
         fp=fopen(cfgpath,"w");
         fprintf(fp,"[General]\n");
-        fprintf(fp,"ServerIP1 = 127.0.0.1:162\n");
+        fprintf(fp,"SNMPtrapIP1 = 127.0.0.1:162\n");
+        fprintf(fp,"RestPort = 40480\n");
         fclose(fp);
     }
     rc=ini_loadcfg(&cfg,cfgpath);
@@ -378,6 +469,7 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+    fprintf(stderr,"%s\n",basepath);
     rc=load_manifesto(basepath);
     if (rc<1) {
         fprintf(stderr,"Error loading manifesto\n");
@@ -391,6 +483,13 @@ int main(int argc, char ** argv) {
         pthread_create(thr,NULL,itsathread,(void*) traps[n]);
         pthread_detach(*thr);
     }
+
+    tcp_http.port=cfg.restport;
+    
+    tcp_http.data=NULL;
+    tcp_http.hand=http_handler;
+    pthread_create(&thr_http, NULL, tcpd_daemon, (void*) &tcp_http);
+    pthread_detach(thr_http);
 
     while (!stopsrc) {
         sleep(30);
