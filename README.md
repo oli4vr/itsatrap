@@ -5,13 +5,17 @@ You need the net-snmp library as prerequisite.
 The file main.csv contains the main manifesto. 1 sensor per line.
 Referenced script files will be processed by the build process.
 
+<pre>
 make
 make install
 make bundle
+</pre>
 
 # Cleanups
+<pre>
 make uninstall
 make clean
+</pre>
 
 # Bundle
 The bundle file is a deployment script intended for easy deployment on linux hosts.
