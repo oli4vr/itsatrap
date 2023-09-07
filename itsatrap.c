@@ -299,10 +299,12 @@ int exec_trap(cmdtrap * c) {
         while (*sp!=10 && *sp!=0) {sp++;}
         if (*sp==0) neof=0;
         *sp=0; sp++;
-        if (cfg.ipstr1[0]!=0)
+        if (c->snmpon==1) {
+         if (cfg.ipstr1[0]!=0)
             rc=send_trap(c,rcstr,outstr,cfg.ipstr1);
-        if (cfg.ipstr2[0]!=0)
+         if (cfg.ipstr2[0]!=0)
             rc=send_trap(c,rcstr,outstr,cfg.ipstr2);
+        }
         strncpy(c->results[c->resultsnum].result_string,outstr,256);
         strncpy(c->results[c->resultsnum].result_value,rcstr,32);
         c->resultsnum++;
