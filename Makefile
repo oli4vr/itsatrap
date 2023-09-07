@@ -12,6 +12,7 @@ install:
 bundle:
 	rm -rf ~/.itsatrap
 	./itsatrap -b main.csv
+	chmod +x ./genpkg.sh
 	./genpkg.sh
 clean:
 	rm *.o itsatrap pkg.tgz
