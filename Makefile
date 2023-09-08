@@ -1,4 +1,4 @@
-NET_SNMP_VARS = $(shell net-snmp-config --netsnmp-libs --netsnmp-agent-libs --external-libs --external-agent-libs | xargs echo)
+NET_SNMP_VARS = $(shell net-snmp-config --netsnmp-libs --netsnmp-agent-libs | xargs echo)
 all:
 	gcc -c inifind.c -o inifind.o -O3
 	gcc -c sha512.c -o sha512.o -O3
@@ -19,3 +19,7 @@ clean:
 uninstall:
 	rm -rf ~/.itsatrap
 	rm ~/bin/itsatrap
+	systemctl stop itsatrap.service
+	systemctl disable itsatrap.service
+	rm -rf /etc/systemd/system/itsatrap.service
+	systemctl daemon-reload

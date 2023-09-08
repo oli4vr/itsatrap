@@ -1,7 +1,8 @@
 #!/bin/bash
 OPATH=$(pwd)
 DISTRO=$(cat /etc/os-release | head -n1 | cut -d \" -f 2 | tr -d \  )
-PKGNAM=itsatrap.${DISTRO}.$(date +%Y%m%d).sh
+ARCH=$(uname -p | xargs echo)
+PKGNAM=itsatrap.${DISTRO}.${ARCH}.$(date +%Y%m%d).sh
 
 cp itsatrap.cfg ~/.itsatrap/
 cd
