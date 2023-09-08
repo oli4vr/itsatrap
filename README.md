@@ -2,7 +2,7 @@
 Build your own monitoring sensor. Use simple easy to write scripts in the backend and use rest api or snmp in the front-end with your favorite monitoring solution.
 
 # Description
-You need libsnmp-dev as prerequisite.
+You need the net-snmp library as a prerequisite.
 The file main.csv contains the main manifesto. 1 sensor per line.
 Referenced script files will be processed by the build process.
 
