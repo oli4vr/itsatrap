@@ -1,5 +1,6 @@
 # itsatrap
-Script based monitoring agent with a rest api interface and which is able to sent snmp traps.
+Build your own monitoring sensor. Use simple easy to write scripts in the backend and use rest api or snmp in the front-end with your favorite monitoring solution.
+
 # Description
 You need libsnmp-dev as prerequisite.
 The file main.csv contains the main manifesto. 1 sensor per line.
